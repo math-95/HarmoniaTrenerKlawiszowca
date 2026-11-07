@@ -954,23 +954,31 @@ async function exportData(){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download=base+'.json';
   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);done();
 }
-function shareFiles(json,base){
-  if(!navigator.canShare||!window.isSecureContext)return null;
-  for(const [ext,type] of [['json','application/json'],['txt','text/plain']]){
-    try{const f=new File([json],`${base}.${ext}`,{type});if(navigator.canShare({files:[f]}))return f;}catch(e){}
+function shareCandidates(json,base){
+  if(!navigator.canShare||!window.isSecureContext)return[];
+  const out=[];
+  for(const [ext,type] of [['txt','text/plain'],['json','application/json']]){
+    try{const f=new File([json],`${base}.${ext}`,{type,lastModified:Date.now()});if(navigator.canShare({files:[f]}))out.push(f);}catch(e){}
   }
-  return null;
+  return out;
 }
-const canShareBackup=()=>!!shareFiles('{}','test');
+const canShareBackup=()=>shareCandidates('{}','test').length>0;
 async function shareData(){
   const json=JSON.stringify({app:'harmonia',v:1,exported:new Date().toISOString(),state:ST});
-  const base=`harmonia-kopia-${today()}`;const f=shareFiles(json,base);
-  if(!f){
+  const base=`harmonia-kopia-${today()}`;const files=shareCandidates(json,base);
+  if(!files.length){
     alert(location.protocol==='file:'?'Udostępnianie działa tylko, gdy aplikacja jest otwarta z adresu internetowego (https), np. z GitHub Pages. Teraz jest otwarta z pliku – użyj „Zapisz plik” w sekcji „Kopia na tym urządzeniu”.':'Ta przeglądarka nie obsługuje udostępniania plików. Użyj „Zapisz plik”.');
     return;
   }
-  try{await navigator.share({files:[f],title:'Harmonia – kopia'});}
-  catch(e){if(e&&e.name==='AbortError')return;toast('Nie udało się udostępnić');return;}
+  let lastErr=null;
+  for(const f of files){
+    try{await navigator.share({files:[f]});lastErr=null;break;}
+    catch(e){if(e&&e.name==='AbortError')return;lastErr=e;}
+  }
+  if(lastErr){
+    if(confirm(`Udostępnianie się nie powiodło (${lastErr.name}: ${lastErr.message}).\n\nZapisać kopię do Pobranych? Stamtąd możesz ją przesłać na Dysk.`))exportData();
+    return;
+  }
   ST.meta.lastBackup=Date.now();ST.meta.backupTotal=ST.stats.total;save();toast('Kopia udostępniona');go(VIEW,false);
 }
 document.getElementById('importFile').addEventListener('change',async e=>{
