@@ -139,9 +139,10 @@ details.info summary{cursor:pointer;color:var(--ink)}details.info p{margin:10px 
 <noscript>Ta aplikacja wymaga włączonego JavaScriptu.</noscript>
 <script>
 'use strict';
+const APP_VER='1.6';
 /*THEORY-START*/
 /* ================= ustawienia (domyślne) ================= */
-function defaultSettings(){return{naming:'pl',minor:'harmonic',enh:'common',disabledKeys:[],limit:'10',autoSubmit:true,autoNext:true,labels:'c',sound:true,km:'maj',gdClient:'',gdLinked:false,gdAuto:true};}
+function defaultSettings(){return{naming:'pl',minor:'harmonic',enh:'common',disabledKeys:[],limit:'off',autoSubmit:true,autoNext:false,labels:'c',sound:true,km:'maj',gdClient:'',gdLinked:false,gdAuto:true,sv:2};}
 let S=defaultSettings();
 
 /* ================= narzędzia ================= */
@@ -347,6 +348,17 @@ function Q(o){return Object.assign({tag:'',sub:'',rule:'',count:null,keyId:null,
 const degreeOpts=()=>ROM.map((x,i)=>({id:i,label:x}));
 const G={};
 
+const TSD={0:{n:'tonika',acc:'tonikę',s:'T',st:'I'},3:{n:'subdominanta',acc:'subdominantę',s:'S',st:'IV'},4:{n:'dominanta',acc:'dominantę',s:'D',st:'V'}};
+G.tsd=ctx=>{
+  const k=pick(keyPool(ctx.km)),sc=scaleNotes(k,'nat'),kn=keyName(k),id=keyId(k);
+  const rule=`${kn}: T = ${noteName(sc[0])} (I) · S = ${noteName(sc[3])} (IV) · D = ${noteName(sc[4])} (V). S – kwarta w górę od toniki, D – kwinta.`;
+  const base={mode:'tsd',keyId:id,mm:k.m,rule};
+  const r=Math.random();const d=pick([3,4,3,4,0]);
+  if(r<.6)return Q({...base,item:`tsd:f:${id}:${d}`,deg:d,prompt:`Wskaż <b>${TSD[d].acc}</b><br><span class="sm">w</span> <b>${kn}</b>`,sub:`${TSD[d].st} stopień – dotknij dźwięku`,input:'pc',sets:[[pcOf(sc[d])]],count:1,answer:`${noteName(sc[d])} (${TSD[d].st})`});
+  if(r<.8)return Q({...base,item:`tsd:r:${id}:${d}`,deg:d,prompt:`Dźwięk <b>${noteName(sc[d])}</b> w <b>${kn}</b> to…`,input:'choice',options:[0,3,4].map(x=>({id:x,label:`${TSD[x].s} · ${TSD[x].n}`})),cols:3,correct:[d],answer:`${TSD[d].n} (${TSD[d].st})`});
+  return Q({...base,item:`tsd:a:${id}`,prompt:`Zaznacz <b>T, S i D</b><br><span class="sm">w</span> <b>${kn}</b>`,sub:'Tonika, subdominanta, dominanta – 3 dźwięki',input:'pc',sets:[[0,3,4].map(x=>pcOf(sc[x]))],count:3,answer:[0,3,4].map(x=>noteName(sc[x])).join(' – ')});
+};
+
 G.scale=ctx=>{
   const k=pick(keyPool(ctx.km)),v=k.m==='min'?minorVar():null,sc=scaleNotes(k,v),kn=keyName(k),id=keyId(k);
   const txt=sc.map(n=>noteName(n)).join(' ');
@@ -541,11 +553,12 @@ G.chrom=ctx=>{
     answer:`${chordName(c3)} lub ${chordName(c4)}`,rule:`Zmniejszony o półton pod ${chordName(cb)} prowadzi do niego jak dominanta.`,play:c4});
 };
 
-const MIXED=['scale','degree','prog','transpose','harm','tones','seventh','inv','circle','func','color','chrom'];
+const MIXED=['tsd','scale','degree','prog','transpose','harm','tones','seventh','inv','circle','func','color','chrom'];
 /*THEORY-END*/
 
 /* ================= opis trybów i poziomów ================= */
 const MODES={
+ tsd:{t:'Tonika, subdominanta, dominanta',d:'I, IV i V każdej tonacji'},
  scale:{t:'Dźwięki tonacji',d:'Stopnie gamy na klawiaturze'},
  degree:{t:'Akord na stopniu',d:'VI w Des-dur – i odwrotnie'},
  prog:{t:'Progresje',d:'Prawdziwe schematy, każda tonacja'},
@@ -561,11 +574,11 @@ const MODES={
  mixed:{t:'Mieszany',d:'Wszystko naraz, przeplatane'}
 };
 const LEVELS=[
- {n:1,t:'Tonacje durowe i ich stopnie',modes:['scale','circle'],km:'maj'},
+ {n:1,t:'Tonacje durowe i ich stopnie',modes:['tsd','scale','circle'],km:'maj'},
  {n:2,t:'Akordy na wszystkich stopniach',modes:['degree','tones'],km:'maj'},
  {n:3,t:'Progresje',modes:['prog','func','harm'],km:'maj'},
  {n:4,t:'Transpozycja',modes:['transpose','prog','circle'],km:'maj'},
- {n:5,t:'Tonacje molowe',modes:['scale','degree','prog','harm'],km:'min'},
+ {n:5,t:'Tonacje molowe',modes:['tsd','scale','degree','prog','harm'],km:'min'},
  {n:6,t:'Akordy septymowe',modes:['seventh','tones'],km:'both'},
  {n:7,t:'Przewroty i połączenia akordów',modes:['inv'],km:'both'},
  {n:8,t:'Szybka harmonia w praktyce',modes:MIXED,km:'both'}
@@ -580,6 +593,7 @@ let storageOK=true;
 function applyState(d){
   ST={settings:Object.assign(defaultSettings(),d.settings||{}),stats:Object.assign(emptyStats(),d.stats||{}),meta:Object.assign(emptyMeta(),d.meta||{})};
   S=ST.settings;
+  if(!(d.settings&&d.settings.sv>=2)){S.limit='off';S.autoNext=false;S.sv=2;}
 }
 function load(){
   try{const raw=localStorage.getItem(LS);if(raw)applyState(JSON.parse(raw));localStorage.setItem(LS+'.t','1');}
@@ -646,7 +660,7 @@ function go(v,push){
   if(v==='home')renderHome();else if(v==='stats')renderStats();else if(v==='settings')renderSettings();
   window.scrollTo(0,0);
 }
-window.addEventListener('popstate',()=>{stopTimer();SESS=null;go('home',false);});
+window.addEventListener('popstate',()=>{stopTimer();SESS=null;if(VIEW!=='home')go('home',false);});
 document.querySelector('.top').addEventListener('click',e=>{const b=e.target.closest('[data-nav]');if(!b)return;if(b.dataset.nav==='home')go('home',false);else go(b.dataset.nav);});
 
 /* ---------- klawiatura ---------- */
@@ -685,7 +699,7 @@ function renderHome(){
     const acc=a.length?ok/a.length:0;
     h+=`<button class="lvl" data-level="${L.n}"><div class="num">${L.n}</div><div class="tx"><div class="tt">${L.t}</div><div class="st">${a.length?`${Math.round(acc*100)}% · ${fmtS(med)} · ostatnie ${a.length}`:'jeszcze nie ćwiczone'}</div><div class="bar"><i style="width:${Math.round(acc*100)}%"></i></div></div></button>`;
   });
-  h+='</div>';
+  h+=`</div><div class="small muted" style="text-align:center;margin-top:16px">wersja ${APP_VER}</div>`;
   $view.innerHTML=h;
 }
 $view.addEventListener('click',e=>{
@@ -709,13 +723,13 @@ function handleAct(a,el){
     case 'tgl':S[el.dataset.key]=!S[el.dataset.key];save();renderSettings();break;
     case 'key':{const id=el.dataset.id;const i=S.disabledKeys.indexOf(id);if(i>=0)S.disabledKeys.splice(i,1);else S.disabledKeys.push(id);save();renderSettings();break;}
     case 'keysall':S.disabledKeys=[];save();renderSettings();break;
-    case 'quit':if(SESS&&SESS.idx>0&&!confirm('Przerwać serię?'))return;stopTimer();SESS=null;try{history.back();}catch(e){go('home',false);}setTimeout(()=>{if(VIEW==='sess')go('home',false);},120);break;
+    case 'quit':stopTimer();SESS=null;go('home',false);break;
     case 'clear':clearSel();break;
     case 'check':submitCurrent();break;
     case 'next':advance();break;
     case 'again':startSession(SESS.opts,true);break;
     case 'retry':startSession(Object.assign({},SESS.opts,{questions:SESS.mistakes}),true);break;
-    case 'menu':SESS=null;try{history.back();}catch(e){}setTimeout(()=>{if(VIEW==='sess')go('home',false);},120);break;
+    case 'menu':stopTimer();SESS=null;go('home',false);break;
   }
 }
 
@@ -928,7 +942,7 @@ function renderSettings(){
   <div class="set"><label>Tonacje w puli</label><div class="hint">Dur</div><div class="chips">${ks.filter(k=>k.m==='maj').map(chip).join('')}</div><div class="hint">Moll</div><div class="chips">${ks.filter(k=>k.m==='min').map(chip).join('')}</div><div><button class="btn sm ghost" data-act="keysall">Zaznacz wszystkie</button></div></div>
   <div class="set"><label>Limit czasu</label>${seg('limit',[['off','Bez'],['10','10 s'],['5','5 s'],['3','3 s'],['2','2 s'],['adaptive','Adapt.']],S.limit)}<div class="hint">Dłuższe odpowiedzi (progresje, akordy 4-dźwiękowe) dostają proporcjonalnie więcej czasu. Adaptacyjny: osobny limit dla każdego pytania, według Twoich czasów.</div></div>
   <div class="set"><label>Podpisy klawiszy</label>${seg('labels',[['none','Brak'],['c','Tylko C'],['all','Białe']],S.labels)}</div>
-  <div class="set">${tg('autoSubmit','Automatyczne zatwierdzanie','Po zaznaczeniu wymaganej liczby dźwięków')}${tg('autoNext','Dalej po dobrej odpowiedzi','Przy błędzie zawsze czeka na Ciebie')}${tg('sound','Dźwięk klawiszy','')}</div>
+  <div class="set">${tg('autoSubmit','Automatyczne zatwierdzanie','Po zaznaczeniu wymaganej liczby dźwięków')}${tg('autoNext','Automatycznie dalej po dobrej odpowiedzi','Wyłączone: przechodzisz przyciskiem „Dalej”')}${tg('sound','Dźwięk klawiszy','')}</div>
   <h2>Dysk Google</h2><div class="card col">${gdOrigin()?`<div class="small">Client ID: ${S.gdClient?'<b>ustawiony</b>':'<span class="muted">brak</span>'}</div><button class="btn sm ghost" data-act="gdcid">${S.gdClient?'Zmień Client ID':'Wpisz Client ID'}</button>`:`<div class="small">Synchronizacja z Dyskiem działa, gdy otwierasz aplikację z adresu internetowego (np. GitHub Pages), a nie z pliku. Teraz jest otwarta z pliku.</div>`}
    ${S.gdClient&&gdOrigin()?`<button class="tog ${S.gdAuto?'on':''}" data-act="tgl" data-key="gdAuto"><span><b>Zapisuj po każdej serii</b><br><span class="small muted">Gdy jesteś już zalogowany w tej sesji</span></span><span class="sw"></span></button>`:''}
    <details class="info"><summary><b>Jak to skonfigurować (raz, ok. 15 min)</b></summary>
@@ -938,7 +952,7 @@ function renderSettings(){
    <p>Aplikacja widzi na Dysku tylko pliki, które sama utworzyła. Ostrzeżenie Google „aplikacja niezweryfikowana” jest normalne dla prywatnej aplikacji – wybierz Kontynuuj.</p></details></div>
   ${dataCard()}
   <h2>Jak dbać o dane</h2><div class="card info">Wyniki i ustawienia zapisują się w przeglądarce, w której otwierasz plik. <b>Otwieraj go zawsze tak samo</b> (ta sama przeglądarka, ten sam plik w tym samym miejscu). Po przeniesieniu pliku albo wyczyszczeniu danych przeglądarki Chrome może nie widzieć zapisu – wtedy użyj <b>Importuj</b>.<br><br><b>Udostępnij na Dysk Google</b> otwiera systemowe menu: wybierz Dysk i folder. Działa, gdy aplikacja jest otwarta z adresu https (np. GitHub Pages). Na Androidzie plik może mieć końcówkę .txt – to normalne, wczytuje się tak samo. <b>Wczytaj</b> przyjmuje plik z Dysku albo z telefonu i sprawdza, czy to kopia Harmonii.</div>
-  <div class="small muted" style="margin-top:14px;text-align:center">Harmonia – Trener Klawiszowca · wersja 1.0</div>`;
+  <div class="small muted" style="margin-top:14px;text-align:center">Harmonia – Trener Klawiszowca · wersja ${APP_VER}</div><div class="small muted" style="text-align:center;margin-top:4px">Diagnostyka udostępniania: ${shareDiag()}</div>`;
   $view.innerHTML=h;
 }
 
@@ -963,20 +977,29 @@ function shareCandidates(json,base){
   return out;
 }
 const canShareBackup=()=>shareCandidates('{}','test').length>0;
+function shareDiag(){
+  let f=false;try{f=!!navigator.canShare&&navigator.canShare({files:[new File(['x'],'t.txt',{type:'text/plain'})]});}catch(e){}
+  return `https:${window.isSecureContext?'tak':'nie'} · share:${navigator.share?'tak':'nie'} · pliki:${f?'tak':'nie'}`;
+}
 async function shareData(){
   const json=JSON.stringify({app:'harmonia',v:1,exported:new Date().toISOString(),state:ST});
   const base=`harmonia-kopia-${today()}`;const files=shareCandidates(json,base);
-  if(!files.length){
-    alert(location.protocol==='file:'?'Udostępnianie działa tylko, gdy aplikacja jest otwarta z adresu internetowego (https), np. z GitHub Pages. Teraz jest otwarta z pliku – użyj „Zapisz plik” w sekcji „Kopia na tym urządzeniu”.':'Ta przeglądarka nie obsługuje udostępniania plików. Użyj „Zapisz plik”.');
+  if(!navigator.share||!window.isSecureContext){
+    alert(location.protocol==='file:'?'Udostępnianie działa tylko, gdy aplikacja jest otwarta z adresu internetowego (https), np. z GitHub Pages. Teraz jest otwarta z pliku – użyj „Zapisz plik” w sekcji „Kopia na tym urządzeniu”.':'Ta przeglądarka nie obsługuje udostępniania. Otwórz adres w Chrome (nie w przeglądarce wbudowanej w inną aplikację) albo użyj „Zapisz plik”.');
     return;
   }
-  let lastErr=null;
+  const errs=[];let ok=false;
   for(const f of files){
-    try{await navigator.share({files:[f]});lastErr=null;break;}
-    catch(e){if(e&&e.name==='AbortError')return;lastErr=e;}
+    try{await navigator.share({files:[f]});ok=true;break;}
+    catch(e){if(e&&e.name==='AbortError')return;errs.push(`${f.name.split('.').pop()}: ${e.name} ${e.message}`);}
   }
-  if(lastErr){
-    if(confirm(`Udostępnianie się nie powiodło (${lastErr.name}: ${lastErr.message}).\n\nZapisać kopię do Pobranych? Stamtąd możesz ją przesłać na Dysk.`))exportData();
+  if(!ok){
+    // ostatnia próba: sama treść kopii jako tekst (Dysk zapisze ją jako plik tekstowy)
+    try{await navigator.share({title:base,text:json});ok=true;}
+    catch(e){if(e&&e.name==='AbortError')return;errs.push(`tekst: ${e.name} ${e.message}`);}
+  }
+  if(!ok){
+    if(confirm(`Udostępnianie się nie powiodło.\n${errs.join('\n')}\n\nZapisać kopię do Pobranych? Stamtąd możesz ją przesłać na Dysk.`))exportData();
     return;
   }
   ST.meta.lastBackup=Date.now();ST.meta.backupTotal=ST.stats.total;save();toast('Kopia udostępniona');go(VIEW,false);
