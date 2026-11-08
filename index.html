@@ -71,6 +71,9 @@ h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute
 .key.miss{background:var(--ok-soft)!important;box-shadow:inset 0 0 0 3px var(--ok)}
 .key.mark{box-shadow:inset 0 -16px 0 var(--mark)}
 .key.press{filter:brightness(.88)}
+.kb.ref{pointer-events:none;height:125px;margin:0 0 10px}
+.key.lit{background:var(--mark)!important;color:#fff}
+.key.b.lit{background:var(--mark)!important}
 .choices{display:grid;gap:7px}
 .ch{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 6px;font-weight:700;font-size:16px;min-height:50px}
 .ch.ok{background:var(--ok);color:#fff;border-color:var(--ok)}.ch.bad{background:var(--bad);color:#fff;border-color:var(--bad)}
@@ -139,7 +142,7 @@ details.info summary{cursor:pointer;color:var(--ink)}details.info p{margin:10px 
 <noscript>Ta aplikacja wymaga włączonego JavaScriptu.</noscript>
 <script>
 'use strict';
-const APP_VER='1.6';
+const APP_VER='1.7';
 /*THEORY-START*/
 /* ================= ustawienia (domyślne) ================= */
 function defaultSettings(){return{naming:'pl',minor:'harmonic',enh:'common',disabledKeys:[],limit:'off',autoSubmit:true,autoNext:false,labels:'c',sound:true,km:'maj',gdClient:'',gdLinked:false,gdAuto:true,sv:2};}
@@ -752,13 +755,21 @@ function limitFor(q){
   let f=1;if(q.input==='chords'&&q.sel==='seq')f=Math.max(1,q.correct.length*.6);else if(q.count>1)f=1+.25*(q.count-1);else if(q.count==null&&q.input==='pc')f=2;
   return(+S.limit)*1000*f;
 }
+const REF={from:48,to:72};
+function refMidis(c){const pcs=chordPcs(c);let cur=REF.from+pcs[0];const out=[cur];for(let i=1;i<pcs.length;i++){let m=cur+1;while(mod(m,12)!==pcs[i])m++;out.push(m);cur=m;}return out.map(m=>m>REF.to?m-12:m);}
+function chordFromId(id){const [p,qq]=id.split(':');return{notes:QI[qq].map(([s,x])=>noteAt(0,+p+x)),root:noteAt(0,+p),q:qq};}
+let litT=[];
+function lightRef(ms){const kb=$view.querySelector('.kb.ref');if(!kb)return;kb.querySelectorAll('.lit').forEach(k=>k.classList.remove('lit'));(ms||[]).forEach(m=>{const k=kb.querySelector(`[data-m="${m}"]`);if(k)k.classList.add('lit');});}
+function lightSeq(chs,q){litT.forEach(clearTimeout);litT=[];chs.forEach((c,i)=>{litT.push(setTimeout(()=>{if(SESS&&SESS.q===q)lightRef(refMidis(c));},150+i*450));});}
 function renderQ(){
+  litT.forEach(clearTimeout);litT=[];
   const q=SESS.q;let ans='';
   if(q.input==='pc')ans=kbHTML(60,71,'one');
   else if(q.input==='abs'||q.showKb)ans=(q.showKb?kbHTML(KB2.from,KB2.to,'two'):'');
   if(q.input==='abs')ans=kbHTML(KB2.from,KB2.to,'two');
+  if((q.input==='choice'||q.input==='chords')&&!q.showKb)ans=kbHTML(REF.from,REF.to,'two ref');
   if(q.input==='choice')ans+=`<div class="choices" style="grid-template-columns:repeat(${q.cols||2},1fr)${q.showKb?';margin-top:10px':''}">${q.options.map((o,i)=>o.spacer?'<span></span>':`<button class="ch" data-i="${i}">${esc(o.label)}</button>`).join('')}</div>`;
-  if(q.input==='chords')ans=(q.sel==='seq'?`<div class="slots">${q.correct.map((_,i)=>`<span class="slot" data-i="${i}"></span>`).join('')}</div>`:'')+`<div class="cgrid">${q.buttons.map(b=>`<button class="cb" data-id="${b.id}">${esc(b.label)}</button>`).join('')}</div>`;
+  if(q.input==='chords')ans+=(q.sel==='seq'?`<div class="slots">${q.correct.map((_,i)=>`<span class="slot" data-i="${i}"></span>`).join('')}</div>`:'')+`<div class="cgrid">${q.buttons.map(b=>`<button class="cb" data-id="${b.id}">${esc(b.label)}</button>`).join('')}</div>`;
   const acts=q.input==='pc'||q.input==='abs'||(q.input==='chords'&&q.sel!=='single');
   const lim=limitFor(q);
   $view.innerHTML=`<div class="sess">
@@ -792,8 +803,8 @@ function paintSel(){
 }
 function onChord(id,el){
   const q=SESS.q,st=SESS.st;if(st.done)return;
-  const b=q.buttons.find(x=>x.id===id);
-  if(S.sound){const [p,qq]=id.split(':');const c={notes:QI[qq].map(([s,x])=>noteAt(0,+p+x)),root:noteAt(0,+p),q:qq};playSet(chordMidis(c));}
+  const tc=chordFromId(id);lightRef(refMidis(tc));
+  if(S.sound)playSet(chordMidis(tc));
   if(q.sel==='single'){submit(id);return;}
   if(q.sel==='seq'){st.seq.push(id);paintSlots();if(st.seq.length===q.correct.length)submit(st.seq);return;}
   if(st.sel.has(id))st.sel.delete(id);else st.sel.add(id);el.classList.toggle('on',st.sel.has(id));
@@ -855,6 +866,11 @@ function submit(a,timeout){
     else if(q.playAbs)playSet(q.playAbs,.15);
     else if(q.play)playSet(chordMidis(q.play),.15);
     else if(q.input==='pc')playSet(q.sets[0].map(p=>60+p),.15);
+  }
+  if($view.querySelector('.kb.ref')){
+    if(q.playSeq)lightSeq(q.playSeq,q);
+    else if(q.play)lightRef(refMidis(q.play));
+    else if(q.input==='chords'&&q.correct.length)lightSeq(q.correct.map(chordFromId),q);
   }
   const head=ok?`<div class="res ok">✓ Dobrze · ${fmtS(ms)}</div>`:timeout?`<div class="res bad">⏱ Koniec czasu</div>`:`<div class="res bad">✗ Nie tym razem</div>`;
   $view.querySelector('.fb').innerHTML=`<div class="fbbox">${head}<div class="ans">${ok?'':'Poprawnie: '}<b>${esc(q.answer)}</b></div>${q.rule?`<div class="rule">${esc(q.rule)}</div>`:''}</div>`;
